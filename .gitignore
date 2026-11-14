@@ -1,0 +1,5 @@
+*.xisf
+*.fits
+*_arbeit/
+vergleich/
+__pycache__/
