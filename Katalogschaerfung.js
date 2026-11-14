@@ -21,7 +21,7 @@
 #include <pjsr/DataType.jsh>
 
 #define KS_TITLE   "Katalogschaerfung"
-#define KS_VERSION "1.0"
+#define KS_VERSION "1.0.1"
 #define KS_KEY     "Katalogschaerfung/"
 
 /*
@@ -508,19 +508,20 @@ function KSDialog()
    this.skript = pathRow( "Programm:", KSParams.skriptPfad, [ [ "Python-Skript", "*.py" ] ],
       function( p ) { KSParams.skriptPfad = p; } );
 
-   this.ok = new PushButton( this );
-   this.ok.text = "Ausfuehren";
-   this.ok.icon = this.scaledResource( ":/icons/power.png" );
-   this.ok.onClick = function() { self.ok(); };
-   this.cancel = new PushButton( this );
-   this.cancel.text = "Abbrechen";
-   this.cancel.icon = this.scaledResource( ":/icons/cancel.png" );
-   this.cancel.onClick = function() { self.cancel(); };
+   // Achtung: nicht "ok"/"cancel" nennen - das wuerde Dialog.ok() und Dialog.cancel() ueberschreiben.
+   this.okButton = new PushButton( this );
+   this.okButton.text = "Ausfuehren";
+   this.okButton.icon = this.scaledResource( ":/icons/power.png" );
+   this.okButton.onClick = function() { self.ok(); };
+   this.cancelButton = new PushButton( this );
+   this.cancelButton.text = "Abbrechen";
+   this.cancelButton.icon = this.scaledResource( ":/icons/cancel.png" );
+   this.cancelButton.onClick = function() { self.cancel(); };
    var buttons = new HorizontalSizer;
    buttons.spacing = 6;
    buttons.addStretch();
-   buttons.add( this.ok );
-   buttons.add( this.cancel );
+   buttons.add( this.okButton );
+   buttons.add( this.cancelButton );
 
    this.sizer = new VerticalSizer;
    this.sizer.margin = 8;
