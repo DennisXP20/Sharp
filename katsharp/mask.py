@@ -78,8 +78,19 @@ def star_mask(both, nonstellar, cat, fwhm_px, k_sigma=1.0, k_low=0.2, big_galaxy
     allowed = np.ones(len(st["x"]), bool)
     if big_galaxy_stars == "sicher":
         allowed &= ~(st["in_big"] & ~st["sure"])
-    s_lab = _lookup(labels, st["x"], st["y"])
+    # Positionstoleranz waechst mit der Sternbreite (breite Sterne -> ungenauere Schwerpunkte)
+    reach = int(round(np.clip(0.35 * fwhm_px, 2, 6)))
+    s_lab = _lookup(labels, st["x"], st["y"], reach=reach)
     cand = allowed & real[s_lab]
+
+    # Wie tief reicht das Bild? Hellster Katalogstern je Eingriffsstelle -> schwaechste so nachgewiesene Sterne.
+    brightest = np.full(n + 1, np.inf)
+    np.minimum.at(brightest, s_lab[cand], st["mag"][cand])
+    seen = brightest[1:][np.isfinite(brightest[1:])]
+    mag_lim = float(np.percentile(seen, 95)) + 1.0 if len(seen) >= 30 else 24.0
+    mag_lim = min(mag_lim, 24.0)
+    if verbose:
+        print("  Bildtiefe etwa %.1f mag - schwaechere Kataloggalaxien werden ignoriert" % mag_lim)
 
     # vorlaeufige Radius-Helligkeits-Beziehung
     radius = lambda mag: np.clip(fwhm_px * (1.0 + 0.6 * (17.0 - mag)), 0.8 * fwhm_px, 60 * fwhm_px)
@@ -94,7 +105,7 @@ def star_mask(both, nonstellar, cat, fwhm_px, k_sigma=1.0, k_low=0.2, big_galaxy
         radius = lambda mag: np.clip(np.exp(icpt + slope * mag) * 1.1, 0.8 * fwhm_px, 60 * fwhm_px)
 
     # Galaxien beanspruchen ihre Ellipse - ausser sie gehen im Halo eines sehr viel helleren Sterns unter
-    g_use = (gx["mag"] < 24.0) & ~gx["big"]
+    g_use = (gx["mag"] < mag_lim) & ~gx["big"]
     bright = np.flatnonzero(cand & st["sure"] & (st["mag"] < 15.0))
     if len(bright) and g_use.any():
         tree = cKDTree(np.c_[gx["x"], gx["y"]])
@@ -104,7 +115,7 @@ def star_mask(both, nonstellar, cat, fwhm_px, k_sigma=1.0, k_low=0.2, big_galaxy
                 near = dist < 0.6 * float(radius(st["mag"][i]))
                 if gx["mag"][j] > st["mag"][i] + (3.0 if near else 7.0):
                     g_use[j] = False
-    g_lab = _lookup(labels, gx["x"], gx["y"], reach=1)
+    g_lab = _lookup(labels, gx["x"], gx["y"], reach=max(1, reach // 2))
     gmag = np.full(labels.shape, np.inf, dtype=np.float32)   # hellste beanspruchende Galaxie je Pixel
     order = np.flatnonzero(g_use & real[g_lab])
     order = order[np.argsort(-gx["mag"][order])]             # hellste zuletzt -> gewinnt
@@ -122,8 +133,16 @@ def star_mask(both, nonstellar, cat, fwhm_px, k_sigma=1.0, k_low=0.2, big_galaxy
 
     claim = np.isfinite(gmag)
     del gmag
-    for i in np.flatnonzero(ok_star):       # Stern, der auf/neben einer Galaxie steht, behaelt seinen Kern
-        _paint_disc(claim, st["x"][i], st["y"][i], 0.5 * float(radius(st["mag"][i])), False)
+    # Stern neben/auf einer Galaxie: ist er deutlich heller, gehoert ihm sein ganzer Bereich, sonst nur der Kern
+    gtree = cKDTree(np.c_[gx["x"][order], gx["y"][order]]) if len(order) else None
+    for i in np.flatnonzero(ok_star):
+        r_s = float(radius(st["mag"][i]))
+        frac = 1.0
+        if gtree is not None:
+            near = gtree.query_ball_point([st["x"][i], st["y"][i]], r_s + 1.2 * fwhm_px)
+            if near and st["mag"][i] > gx["mag"][order[near]].min() - 1.5:
+                frac = 0.5
+        _paint_disc(claim, st["x"][i], st["y"][i], frac * r_s, False)
     mask = keep[labels] & ~claim
 
     g_in = np.zeros(n + 1, bool)

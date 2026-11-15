@@ -3,6 +3,8 @@ import numpy as np
 from astropy.coordinates import SkyCoord
 import astropy.units as u
 
+from .astrometry import world2pix
+
 GAIA_EPOCH = 2016.0
 
 
@@ -16,8 +18,8 @@ def _ellipse_to_pixels(wcs, ra, dec, a_arcsec, pa_deg):
     c = SkyCoord(ra * u.deg, dec * u.deg)
     step = np.maximum(a_arcsec, 1.0)
     c2 = c.directional_offset_by(np.nan_to_num(pa_deg) * u.deg, step * u.arcsec)
-    x0, y0 = wcs.all_world2pix(ra, dec, 0)
-    x1, y1 = wcs.all_world2pix(c2.ra.deg, c2.dec.deg, 0)
+    x0, y0 = world2pix(wcs, ra, dec)
+    x1, y1 = world2pix(wcs, c2.ra.deg, c2.dec.deg)
     scale = np.hypot(x1 - x0, y1 - y0) / step  # px pro Bogensekunde
     return x0, y0, a_arcsec * scale, np.arctan2(y1 - y0, x1 - x0)
 
@@ -44,7 +46,7 @@ def build(wcs, shape, obs_year, gaia, ls=None, sdss=None, pgc=None, big_arcsec=2
     pm_sig = np.hypot(pmra / _f(gaia["pmra_error"], np.inf), pmde / _f(gaia["pmdec_error"], np.inf))
     plx_sig = _f(gaia["parallax_over_error"], 0)
     g_sure = (pm_sig > 4) | (plx_sig > 4)
-    g_galflag = (np.asarray(gaia["in_galaxy_candidates"]).astype(str) == "True") | \
+    g_galflag = np.isin(np.char.lower(np.asarray(gaia["in_galaxy_candidates"]).astype(str)), ["true", "1", "t"]) | \
                 (_f(gaia["classprob_dsc_combmod_galaxy"], 0) > 0.5)
     g_point = np.ones(len(gaia), bool)   # wird unten durch LS/SDSS ggf. widerlegt
     g_point[g_galflag & ~g_sure] = False
@@ -134,11 +136,11 @@ def build(wcs, shape, obs_year, gaia, ls=None, sdss=None, pgc=None, big_arcsec=2
                     mag=gal["mag"][keep], a_arcsec=gal["a"][keep])
     galaxies["big"] = galaxies["a_arcsec"] > big_arcsec
 
-    sx, sy = wcs.all_world2pix(g_ra, g_dec, 0)
+    sx, sy = world2pix(wcs, g_ra, g_dec)
     s = dict(x=sx[g_point], y=sy[g_point], mag=g_mag[g_point], sure=g_sure[g_point])
     if star_extra["ra"]:
         era, edec, emag = (np.concatenate(star_extra[k]) for k in ("ra", "dec", "mag"))
-        ex, ey = wcs.all_world2pix(era, edec, 0)
+        ex, ey = world2pix(wcs, era, edec)
         s = dict(x=np.concatenate([s["x"], ex]), y=np.concatenate([s["y"], ey]),
                  mag=np.concatenate([s["mag"], emag]), sure=np.concatenate([s["sure"], np.zeros(len(ex), bool)]))
     keep = inside(s["x"], s["y"])

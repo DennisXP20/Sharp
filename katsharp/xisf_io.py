@@ -19,31 +19,46 @@ class XisfImage:
         attrs = dict(re.findall(r'(\w+)="([^"]*)"', m.group(1)))
         self.compression = attrs.get("compression")
         self.compressed = self.compression is not None
-        if attrs.get("sampleFormat") != "Float32":
-            raise ValueError("Nur Float32 wird unterstuetzt (ist: %s)" % attrs.get("sampleFormat"))
+        formats = {"Float32": ("<f4", 1.0), "Float64": ("<f8", 1.0), "UInt16": ("<u2", 65535.0),
+                   "UInt8": ("u1", 255.0), "UInt32": ("<u4", 4294967295.0)}
+        if attrs.get("sampleFormat") not in formats:
+            raise ValueError("Pixelformat %s wird nicht unterstuetzt" % attrs.get("sampleFormat"))
+        self.dtype, self.scale = formats[attrs["sampleFormat"]]
         w, h, c = (int(v) for v in attrs["geometry"].split(":"))
         self.width, self.height, self.channels = w, h, c
         _, off, size = attrs["location"].split(":")
         self.offset, self.size = int(off), int(size)
 
+    @property
+    def plain_float32(self):
+        """True, wenn die Pixel unkomprimiert als Float32 in der Datei stehen (dann kann man sie direkt ersetzen)."""
+        return not self.compressed and self.dtype == "<f4"
+
     def data(self):
-        """Bilddaten, Form (Kanaele, Hoehe, Breite), Zeile 0 = oben. Unkomprimiert als Memmap."""
+        """Bilddaten als Float32 0..1, Form (Kanaele, Hoehe, Breite), Zeile 0 = oben."""
         shape = (self.channels, self.height, self.width)
-        if not self.compressed:
+        if self.plain_float32:
             return np.memmap(self.path, dtype="<f4", mode="r", offset=self.offset, shape=shape)
-        parts = self.compression.split(":")
-        codec = parts[0].lower()
-        if not codec.startswith("zlib"):
-            raise ValueError("XISF-Kompression '%s' wird nicht unterstuetzt - bitte ohne Kompression oder mit zlib speichern." % codec)
-        import zlib
-        with open(self.path, "rb") as f:
-            f.seek(self.offset)
-            raw = zlib.decompress(f.read(self.size))
-        if codec.endswith("+sh"):   # Byte-Shuffling rueckgaengig machen
-            item = int(parts[2])
-            n = len(raw) // item
-            raw = np.frombuffer(raw, dtype=np.uint8)[:n * item].reshape(item, n).T.tobytes()
-        return np.frombuffer(raw, dtype="<f4").reshape(shape)
+        if not self.compressed:
+            raw = np.memmap(self.path, dtype=self.dtype, mode="r", offset=self.offset, shape=shape)
+        else:
+            parts = self.compression.split(":")
+            codec = parts[0].lower()
+            if not codec.startswith("zlib"):
+                raise ValueError("XISF-Kompression '%s' wird nicht unterstuetzt - bitte ohne Kompression oder mit zlib speichern." % codec)
+            import zlib
+            with open(self.path, "rb") as f:
+                f.seek(self.offset)
+                buf = zlib.decompress(f.read(self.size))
+            if codec.endswith("+sh"):   # Byte-Shuffling rueckgaengig machen
+                item = int(parts[2])
+                n = len(buf) // item
+                buf = np.frombuffer(buf, dtype=np.uint8)[:n * item].reshape(item, n).T.tobytes()
+            raw = np.frombuffer(buf, dtype=self.dtype).reshape(shape)
+        out = np.asarray(raw, dtype=np.float32)
+        if self.scale != 1.0:
+            out /= self.scale
+        return out
 
     def _prop(self, pid):
         m = re.search(r'<Property id="%s"([^>]*?)(?:/>|>(.*?)</Property>)' % re.escape(pid), self.xml, re.S)

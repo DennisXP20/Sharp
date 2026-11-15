@@ -69,14 +69,67 @@ def _box(ra0, dec0, half_ra, half_dec):
     return ra0 - hr, ra0 + hr, d1, d2
 
 
-def gaia(cache, ra0, dec0, half_ra, half_dec):
+GAIA_COLS = ("source_id, ra, dec, pmra, pmdec, pmra_error, pmdec_error, parallax, parallax_over_error, "
+             "phot_g_mean_mag, bp_rp, ruwe, astrometric_params_solved, astrometric_excess_noise, "
+             "classprob_dsc_combmod_star, classprob_dsc_combmod_galaxy, classprob_dsc_combmod_quasar, "
+             "in_galaxy_candidates, in_qso_candidates")
+
+
+def _reachable(url, timeout=10):
+    import requests
+    try:
+        requests.get(url, timeout=timeout)
+        return True
+    except Exception:
+        return False
+
+
+def _gaia_esa(ra0, dec0, half_ra, half_dec):
+    if not _reachable(GAIA_TAP + "/availability"):
+        raise IOError("Server antwortet nicht")
     r1, r2, d1, d2 = _box(ra0, dec0, half_ra, half_dec)
-    q = ("SELECT source_id, ra, dec, pmra, pmdec, pmra_error, pmdec_error, parallax, parallax_over_error, "
-         "phot_g_mean_mag, bp_rp, ruwe, astrometric_params_solved, astrometric_excess_noise, "
-         "classprob_dsc_combmod_star, classprob_dsc_combmod_galaxy, classprob_dsc_combmod_quasar, "
-         "in_galaxy_candidates, in_qso_candidates "
-         "FROM gaiadr3.gaia_source WHERE ra BETWEEN %.6f AND %.6f AND dec BETWEEN %.6f AND %.6f" % (r1, r2, d1, d2))
-    return _cached(cache, "gaia_dr3", lambda: _tap(GAIA_TAP, q))
+    return _tap(GAIA_TAP, "SELECT %s FROM gaiadr3.gaia_source WHERE ra BETWEEN %.6f AND %.6f "
+                          "AND dec BETWEEN %.6f AND %.6f" % (GAIA_COLS, r1, r2, d1, d2))
+
+
+def _gaia_datalab(ra0, dec0, half_ra, half_dec):
+    radius = float(np.hypot(half_ra, half_dec))
+    return _tap_sync(DATALAB_TAP, "SELECT %s FROM gaia_dr3.gaia_source WHERE 't'=Q3C_RADIAL_QUERY(ra, dec, %.6f, %.6f, %.4f)"
+                     % (GAIA_COLS, ra0, dec0, radius))
+
+
+def _gaia_vizier(ra0, dec0, half_ra, half_dec):
+    names = {"Source": "source_id", "RA_ICRS": "ra", "DE_ICRS": "dec", "pmRA": "pmra", "pmDE": "pmdec",
+             "e_pmRA": "pmra_error", "e_pmDE": "pmdec_error", "Plx": "parallax", "RPlx": "parallax_over_error",
+             "Gmag": "phot_g_mean_mag", "BP-RP": "bp_rp", "RUWE": "ruwe", "Solved": "astrometric_params_solved",
+             "epsi": "astrometric_excess_noise", "PSS": "classprob_dsc_combmod_star",
+             "PGal": "classprob_dsc_combmod_galaxy", "PQSO": "classprob_dsc_combmod_quasar",
+             "Gal": "in_galaxy_candidates", "QSO": "in_qso_candidates"}
+    t = _vizier("I/355/gaiadr3", list(names), ra0, dec0, half_ra, half_dec)
+    if not len(t):
+        raise IOError("leere Antwort")
+    out = Table()
+    for src, dst in names.items():
+        out[dst] = t[src]
+    return out
+
+
+def gaia(cache, ra0, dec0, half_ra, half_dec):
+    """Gaia DR3 fuer das Feld; faellt der ESA-Server aus, werden NOIRLab und VizieR versucht."""
+    def fetch():
+        last = None
+        for label, fn in (("ESA", _gaia_esa), ("NOIRLab", _gaia_datalab), ("VizieR", _gaia_vizier)):
+            try:
+                t = fn(ra0, dec0, half_ra, half_dec)
+                if len(t):
+                    print("  Gaia DR3 von %s: %d Quellen" % (label, len(t)), flush=True)
+                    return t
+                last = IOError("leere Antwort")
+            except Exception as e:
+                last = e
+            print("  ! Gaia bei %s nicht abrufbar (%s) - naechste Quelle" % (label, str(last).splitlines()[0][:80]), flush=True)
+        raise last
+    return _cached(cache, "gaia_dr3", fetch)
 
 
 def legacy_survey(cache, ra0, dec0, half_ra, half_dec):

@@ -132,11 +132,15 @@ def main():
     g_dec = F(gaia["dec"])
     g_ra = F(gaia["ra"]) + F(gaia["pmra"], 0) * dt / 3.6e6 / np.cos(np.radians(g_dec))
     g_dec = g_dec + F(gaia["pmdec"], 0) * dt / 3.6e6
-    gx, gy = wcs.all_world2pix(g_ra, g_dec, 0)
+    gx, gy = astrometry.world2pix(wcs, g_ra, g_dec)
     sel = (gx > 20) & (gx < w - 20) & (gy > 20) & (gy < h - 20) & (g_mag > 11) & (g_mag < 17.5)
     if sel.sum() < 30:
         sys.exit("Zu wenige Gaia-Sterne im Bild gefunden (%d) - stimmt die astrometrische Loesung?" % sel.sum())
-    wcs = astrometry.refine_wcs(lum, wcs, g_ra[sel], g_dec[sel])
+    fwhm = astrometry.measure_fwhm(lum, wcs, g_ra[sel & (g_mag > 14)], g_dec[sel & (g_mag > 14)])
+    try:
+        wcs = astrometry.refine_wcs(lum, wcs, g_ra[sel], g_dec[sel], half=int(np.clip(round(fwhm), 7, 15)))
+    except ValueError as e:
+        sys.exit(str(e))
     fwhm = astrometry.measure_fwhm(lum, wcs, g_ra[sel & (g_mag > 14)], g_dec[sel & (g_mag > 14)])
     say("  Stern-FWHM: %.1f px" % fwhm)
     cat = classify.build(wcs, (h, w), obs_year, gaia, ls, sdss, pgc)
@@ -179,7 +183,7 @@ def main():
         write_xisf(out, ns, image_id="katalogschaerfung")
     else:
         out = stem + "_katalog.xisf"
-        if im.compressed:
+        if not im.plain_float32:
             write_xisf(out, ns, image_id="katalogschaerfung")
         else:
             shutil.copyfile(src, out)      # Kopie des Originals behaelt alle Metadaten (Astrometrie, SPCC, ...)
