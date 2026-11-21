@@ -19,7 +19,7 @@ import time
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from katsharp import astrometry, catalogs, classify, mask as maskmod  # noqa: E402
+from katsharp import astrometry, catalogs, classify, mask as maskmod, spikes  # noqa: E402
 from katsharp.xisf_io import XisfImage, write_xisf  # noqa: E402
 
 SASPRO = r"C:\Program Files\SetiAstroSuitePro\setiastrosuitepro.exe"
@@ -71,6 +71,8 @@ def main():
     p.add_argument("--galaxiensterne", choices=["sicher", "alle"], default="sicher",
                    help="in grossen Galaxien nur Gaia-sichere Sterne schaerfen (sicher) oder alle Punktquellen (alle)")
     p.add_argument("--schwelle", type=float, default=1.0, help="Empfindlichkeit der Stellen-Erkennung in Sigma")
+    p.add_argument("--spikes-schaerfen", action="store_true",
+                   help="Beugungsspikes dem Sternmodell ueberlassen (Standard: Spikes bleiben wie im Nicht-Stern-Ergebnis)")
     p.add_argument("--kein-gpu", action="store_true")
     p.add_argument("--saspro", default=SASPRO)
     p.add_argument("--neu", action="store_true", help="Zwischenergebnisse verwerfen")
@@ -172,6 +174,8 @@ def main():
 
     ns, both = load(f_ns), load(f_both)
     m, stats = maskmod.star_mask(both, ns, cat, fwhm, k_sigma=a.schwelle, big_galaxy_stars=a.galaxiensterne)
+    if not a.spikes_schaerfen:
+        m, _ = spikes.protect(m, ns, both, cat, fwhm)
 
     say("5/5 Zusammensetzen und speichern")
     for c in range(ns.shape[0]):

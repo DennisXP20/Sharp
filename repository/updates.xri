@@ -4,15 +4,14 @@
       <p>Katalogschaerfung: Cosmic Clarity mit Katalogpruefung fuer PixInsight.</p>
    </description>
    <platform os="all" arch="noarch" version="1.8.9:1.9.99">
-      <package fileName="20261115-Katalogschaerfung-1.0.2.zip" sha1="39e910256216453c50baec168b829b63ede49b7c" type="script" releaseDate="20261115125520">
-         <title>Katalogschaerfung 1.0.2</title>
+      <package fileName="20261121-Katalogschaerfung-1.0.3.zip" sha1="bb59d4931981eaf54ef56c661822f583a6fd0a90" type="script" releaseDate="20261121192120">
+         <title>Katalogschaerfung 1.0.3</title>
          <description>
             <p>Schaerft lineare, astrometrisch geloeste Bilder mit Cosmic Clarity (SetiAstroSuite Pro).
             Das Sternmodell wirkt nur dort, wo Gaia DR3 oder der Legacy Survey einen Stern kennen;
             Hintergrundgalaxien werden nicht zu Sternen. Menue: Script &gt; Utilities &gt; Katalogschaerfung.</p>
-            <p>1.0.2: Gaia wird bei Ausfall des ESA-Servers von NOIRLab oder VizieR geholt. Absturz bei
-            Katalogobjekten weit ausserhalb des Bildes behoben. Falsche astrometrische Loesungen werden erkannt.
-            Toleranzen richten sich nach Sternbreite und Bildtiefe.</p>
+            <p>1.0.3: Beugungsspikes werden im Bild erkannt (Winkel, Laenge, Breite) und bleiben durchgehend
+            gleichmaessig; keine zerhackten Spikes und Perlen mehr. Der Sternkern wird weiter geschaerft.</p>
             <p>Voraussetzungen: SetiAstroSuite Pro und Python mit astropy, scipy, pyvo, astroquery, truststore.</p>
          </description>
       </package>

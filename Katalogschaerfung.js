@@ -21,7 +21,7 @@
 #include <pjsr/DataType.jsh>
 
 #define KS_TITLE   "Katalogschaerfung"
-#define KS_VERSION "1.0.2"
+#define KS_VERSION "1.0.3"
 #define KS_KEY     "Katalogschaerfung/"
 
 /*
